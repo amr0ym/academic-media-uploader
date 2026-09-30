@@ -1,7 +1,16 @@
+# Sensitive credentials & tokens
 *.json
 *.pickle
 *.session
 *.session-journal
+*.env
+
+# Temporary files and outputs
 /temp/
+*.mp4
+*.mkv
+*.png
+*.jpg
+
+# Python cache
 __pycache__/
-.env
