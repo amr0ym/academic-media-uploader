@@ -1,0 +1,7 @@
+*.json
+*.pickle
+*.session
+*.session-journal
+/temp/
+__pycache__/
+.env
