@@ -1,0 +1,7 @@
+telethon
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+nest_asyncio
+Pillow
+requests
