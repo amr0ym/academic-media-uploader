@@ -7,6 +7,7 @@ import glob
 import pickle
 import asyncio
 import subprocess
+import argparse
 
 # 1. تثبيت وتحديث المكتبات المطلوبة داخل بيئة Colab
 subprocess.run([
@@ -27,8 +28,8 @@ from googleapiclient.http import MediaFileUpload
 # ------------------------------------------------------------------------------
 # 1. الإعدادات والبيانات الخاصّة بك
 # ------------------------------------------------------------------------------
-API_ID = 38860251
-API_HASH = "13317f5e670a85c023bee721186de33f"
+API_ID = ""      # يمكن وضع API ID هنا أو عبر TELEGRAM_API_ID أو --telegram-api-id
+API_HASH = ""    # يمكن وضع API HASH هنا أو عبر TELEGRAM_API_HASH أو --telegram-api-hash
 
 # رابط المنشور المراد رفعه
 TELEGRAM_POST_URL = "https://t.me/AouEgyRecords20_21/1551"
@@ -41,6 +42,37 @@ PRIVACY_STATUS = "unlisted"  # اختر: "public" (عام) | "unlisted" (غير 
 TEMP_DIR = "/content/temp_telegram_video"
 os.makedirs(TEMP_DIR, exist_ok=True)
 OUTPUT_PATH = os.path.join(TEMP_DIR, "tg_video.mp4")
+
+# ------------------------------------------------------------------------------
+# دعم تمرير المدخلات عبر args/env مع الحفاظ على الإعدادات الحالية
+# ------------------------------------------------------------------------------
+parser = argparse.ArgumentParser(description="رفع فيديو من Telegram إلى YouTube")
+parser.add_argument("--telegram-post-url", default=os.getenv("TELEGRAM_POST_URL", TELEGRAM_POST_URL))
+parser.add_argument("--telegram-api-id", default=os.getenv("TELEGRAM_API_ID", str(API_ID).strip()))
+parser.add_argument("--telegram-api-hash", default=os.getenv("TELEGRAM_API_HASH", str(API_HASH).strip()))
+parser.add_argument("--video-title", default=os.getenv("TELEGRAM_VIDEO_TITLE", VIDEO_TITLE))
+parser.add_argument("--video-description", default=os.getenv("TELEGRAM_VIDEO_DESCRIPTION", VIDEO_DESCRIPTION))
+parser.add_argument(
+    "--privacy-status",
+    default=os.getenv("TELEGRAM_PRIVACY_STATUS", PRIVACY_STATUS),
+    choices=["public", "unlisted", "private"]
+)
+args = parser.parse_args()
+
+TELEGRAM_POST_URL = args.telegram_post_url
+VIDEO_TITLE = args.video_title
+VIDEO_DESCRIPTION = args.video_description
+PRIVACY_STATUS = args.privacy_status
+
+if not args.telegram_api_id or not args.telegram_api_hash:
+    raise ValueError("يرجى تحديد TELEGRAM_API_ID و TELEGRAM_API_HASH عبر env أو args أو داخل الملف.")
+
+try:
+    API_ID = int(args.telegram_api_id)
+except ValueError as exc:
+    raise ValueError("TELEGRAM_API_ID يجب أن يكون رقمًا صحيحًا.") from exc
+
+API_HASH = args.telegram_api_hash
 
 # ------------------------------------------------------------------------------
 # 2. المصادقة والاتصال بـ YouTube API

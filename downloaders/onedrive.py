@@ -7,6 +7,7 @@ import glob
 import pickle
 import subprocess
 import requests
+import argparse
 
 # ------------------------------------------------------------------------------
 # 1. تثبيت وتحديث المكتبات
@@ -38,6 +39,25 @@ PRIVACY_STATUS = "unlisted"   # Options: "public" | "unlisted" | "private"
 TEMP_DIR = "/content/temp_single_video"
 os.makedirs(TEMP_DIR, exist_ok=True)
 OUTPUT_PATH = os.path.join(TEMP_DIR, "test_video.mp4")
+
+# ==============================================================================
+# دعم تمرير المدخلات عبر args/env مع الحفاظ على الإعدادات الحالية
+# ==============================================================================
+parser = argparse.ArgumentParser(description="رفع فيديو من OneDrive/SharePoint إلى YouTube")
+parser.add_argument("--video-url", default=os.getenv("ONEDRIVE_VIDEO_URL", VIDEO_URL))
+parser.add_argument("--video-title", default=os.getenv("ONEDRIVE_VIDEO_TITLE", VIDEO_TITLE))
+parser.add_argument("--video-description", default=os.getenv("ONEDRIVE_VIDEO_DESCRIPTION", VIDEO_DESCRIPTION))
+parser.add_argument(
+    "--privacy-status",
+    default=os.getenv("ONEDRIVE_PRIVACY_STATUS", PRIVACY_STATUS),
+    choices=["public", "unlisted", "private"]
+)
+args = parser.parse_args()
+
+VIDEO_URL = args.video_url
+VIDEO_TITLE = args.video_title
+VIDEO_DESCRIPTION = args.video_description
+PRIVACY_STATUS = args.privacy_status
 
 # ==============================================================================
 # 2. المصادقة وتوثيق الاتصال بـ YouTube API

@@ -8,6 +8,7 @@ import time
 import pickle
 import glob
 import subprocess
+import argparse
 
 # 1. تثبيت وتحديث المكتبات المطلوبة
 subprocess.run(["pip", "-q", "install", "-U", "gdown", "google-api-python-client", "google-auth-oauthlib", "google-auth-httplib2"])
@@ -32,6 +33,25 @@ PRIVACY_STATUS = "unlisted"  # "public" | "unlisted" | "private"
 
 TEMP_DIR = "/content/temp_single_video"
 os.makedirs(TEMP_DIR, exist_ok=True)
+
+# ------------------------------------------------------------------------------
+# دعم تمرير المدخلات عبر args/env مع الحفاظ على الإعدادات الحالية
+# ------------------------------------------------------------------------------
+parser = argparse.ArgumentParser(description="رفع فيديو من Google Drive إلى YouTube")
+parser.add_argument("--video-url", default=os.getenv("GDRIVE_VIDEO_URL", VIDEO_URL))
+parser.add_argument("--video-title", default=os.getenv("GDRIVE_VIDEO_TITLE", VIDEO_TITLE))
+parser.add_argument("--video-description", default=os.getenv("GDRIVE_VIDEO_DESCRIPTION", VIDEO_DESCRIPTION))
+parser.add_argument(
+    "--privacy-status",
+    default=os.getenv("GDRIVE_PRIVACY_STATUS", PRIVACY_STATUS),
+    choices=["public", "unlisted", "private"]
+)
+args = parser.parse_args()
+
+VIDEO_URL = args.video_url
+VIDEO_TITLE = args.video_title
+VIDEO_DESCRIPTION = args.video_description
+PRIVACY_STATUS = args.privacy_status
 
 # ------------------------------------------------------------------------------
 # 2. المصادقة والاتصال بـ YouTube API
