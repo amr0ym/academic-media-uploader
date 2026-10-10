@@ -6,3 +6,4 @@ nest_asyncio
 Pillow
 requests
 gdown
+gradio

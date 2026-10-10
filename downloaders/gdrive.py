@@ -3,21 +3,17 @@
 # ==============================================================================
 import os
 import re
-import json
-import time
-import pickle
-import glob
 import subprocess
+import argparse
 
 # 1. تثبيت وتحديث المكتبات المطلوبة
 subprocess.run(["pip", "-q", "install", "-U", "gdown", "google-api-python-client", "google-auth-oauthlib", "google-auth-httplib2"])
 
 import gdown
 from google.colab import drive
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from auth_utils import get_state_dir, get_youtube_credentials
 
 # ------------------------------------------------------------------------------
 # إعدادات الفيديو المنفرد
@@ -34,45 +30,37 @@ TEMP_DIR = "/content/temp_single_video"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 # ------------------------------------------------------------------------------
+# دعم تمرير المدخلات عبر args/env مع الحفاظ على الإعدادات الحالية
+# ------------------------------------------------------------------------------
+parser = argparse.ArgumentParser(description="رفع فيديو من Google Drive إلى YouTube")
+parser.add_argument("--video-url", default=os.getenv("GDRIVE_VIDEO_URL", VIDEO_URL))
+parser.add_argument("--video-title", default=os.getenv("GDRIVE_VIDEO_TITLE", VIDEO_TITLE))
+parser.add_argument("--video-description", default=os.getenv("GDRIVE_VIDEO_DESCRIPTION", VIDEO_DESCRIPTION))
+parser.add_argument(
+    "--privacy-status",
+    default=os.getenv("GDRIVE_PRIVACY_STATUS", PRIVACY_STATUS),
+    choices=["public", "unlisted", "private"]
+)
+args = parser.parse_args()
+
+VIDEO_URL = args.video_url
+VIDEO_TITLE = args.video_title
+VIDEO_DESCRIPTION = args.video_description
+PRIVACY_STATUS = args.privacy_status
+
+# ------------------------------------------------------------------------------
 # 2. المصادقة والاتصال بـ YouTube API
 # ------------------------------------------------------------------------------
 drive.mount('/content/mydrive', force_remount=False)
 
-STATE_DIR = "/content/mydrive/MyDrive/YT_Uploader"
-TOKEN_FILE = os.path.join(STATE_DIR, "youtube_token.pickle")
-
-CLIENT_SECRET_FILE = None
-if os.path.exists("/content/client_secret.json"):
-    CLIENT_SECRET_FILE = "/content/client_secret.json"
-else:
-    matched_files = glob.glob("/content/client_secret*.json")
-    if matched_files:
-        CLIENT_SECRET_FILE = matched_files[0]
+STATE_DIR = get_state_dir()
 
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube"
 ]
 
-credentials = None
-if os.path.exists(TOKEN_FILE):
-    with open(TOKEN_FILE, "rb") as f:
-        credentials = pickle.load(f)
-
-if credentials and credentials.expired and credentials.refresh_token:
-    credentials.refresh(Request())
-
-if not credentials or not credentials.valid:
-    flow = InstalledAppFlow.from_client_secrets_file(
-        CLIENT_SECRET_FILE, SCOPES, redirect_uri="urn:ietf:wg:oauth:2.0:oob"
-    )
-    auth_url, _ = flow.authorization_url(prompt='consent')
-    print("اضغط على الرابط للمصادقة:\n", auth_url)
-    code = input("أدخل كود التوثيق هنا: ").strip()
-    flow.fetch_token(code=code)
-    credentials = flow.credentials
-    with open(TOKEN_FILE, "wb") as f:
-        pickle.dump(credentials, f)
+credentials = get_youtube_credentials(SCOPES, provider_label="Google Drive/YouTube")
 
 youtube = build("youtube", "v3", credentials=credentials)
 print("تم الاتصال بـ YouTube بنجاح.")
