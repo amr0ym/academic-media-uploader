@@ -1,4 +1,5 @@
 Flask
+gunicorn
 telethon
 google-api-python-client
 google-auth-oauthlib
