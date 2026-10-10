@@ -3,8 +3,6 @@
 # ==============================================================================
 
 import os
-import glob
-import pickle
 import subprocess
 import requests
 import argparse
@@ -20,17 +18,21 @@ subprocess.run([
 ], check=True)
 
 from google.colab import drive
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from auth_utils import (
+    get_state_dir,
+    get_youtube_credentials,
+    get_onedrive_access_token,
+    refresh_onedrive_access_token_after_401,
+)
 
 # ==============================================================================
 # إعدادات الفيديو والروابط
 # ==============================================================================
 
 # ضع رابط المشاركة أو المشاهدة من SharePoint / OneDrive
-VIDEO_URL = "https://arabou-my.sharepoint.com/:v:/g/personal/s24510315eg_std_aou_edu_eg/IQB0tyOygIkGSKAYZZenADYkAfLVKVA562C9fGX-OA44-9k?nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJPbmVEcml2ZUZvckJ1c2luZXNzIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXciLCJyZWZlcnJhbFZpZXciOiJNeUZpbGVzTGlua0NvcHkifX0&e=DRSepJ"
+VIDEO_URL = "https://onedrive.live.com/"
 
 VIDEO_TITLE = "تجربة رفع فيديو من OneDrive"
 VIDEO_DESCRIPTION = "تم الرفع تلقائياً عبر Google Colab"
@@ -65,45 +67,14 @@ PRIVACY_STATUS = args.privacy_status
 
 drive.mount('/content/mydrive', force_remount=False)
 
-STATE_DIR = "/content/mydrive/MyDrive/YT_Uploader"
-os.makedirs(STATE_DIR, exist_ok=True)
-TOKEN_FILE = os.path.join(STATE_DIR, "youtube_token.pickle")
-
-CLIENT_SECRET_FILE = None
-if os.path.exists("/content/client_secret.json"):
-    CLIENT_SECRET_FILE = "/content/client_secret.json"
-else:
-    matched_files = glob.glob("/content/client_secret*.json")
-    if matched_files:
-        CLIENT_SECRET_FILE = matched_files[0]
-
-if CLIENT_SECRET_FILE is None:
-    raise FileNotFoundError("لم يتم العثور على client_secret.json في /content/")
+STATE_DIR = get_state_dir()
 
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube"
 ]
 
-credentials = None
-if os.path.exists(TOKEN_FILE):
-    with open(TOKEN_FILE, "rb") as f:
-        credentials = pickle.load(f)
-
-if credentials and credentials.expired and credentials.refresh_token:
-    credentials.refresh(Request())
-
-if not credentials or not credentials.valid:
-    flow = InstalledAppFlow.from_client_secrets_file(
-        CLIENT_SECRET_FILE, SCOPES, redirect_uri="urn:ietf:wg:oauth:2.0:oob"
-    )
-    auth_url, _ = flow.authorization_url(prompt="consent")
-    print("اضغط على الرابط للمصادقة:\n", auth_url)
-    code = input("\nأدخل كود التوثيق هنا: ").strip()
-    flow.fetch_token(code=code)
-    credentials = flow.credentials
-    with open(TOKEN_FILE, "wb") as f:
-        pickle.dump(credentials, f)
+credentials = get_youtube_credentials(SCOPES, provider_label="OneDrive/YouTube")
 
 youtube = build("youtube", "v3", credentials=credentials)
 print("تم الاتصال بـ YouTube بنجاح.")
@@ -125,7 +96,32 @@ headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
+onedrive_access_token, onedrive_oauth_mode = get_onedrive_access_token()
+if onedrive_access_token:
+    headers["Authorization"] = "Bearer " + onedrive_access_token
+    print("تم تفعيل OneDrive OAuth token المخزن تلقائياً.")
+elif onedrive_oauth_mode:
+    print(
+        "تنبيه: إعدادات OAuth لـ OneDrive موجودة لكن لم يتم استخراج access token صالح. "
+        "سيتم المحاولة بالرابط المباشر فقط."
+    )
+    print(
+        "للمرة الأولى عند استخدام OAuth مع OneDrive يلزم إجراء يدوي خارجي للحصول على refresh token "
+        "ووضعه في Colab Secrets (ONEDRIVE_CLIENT_ID / ONEDRIVE_REFRESH_TOKEN)."
+    )
+
 response = requests.get(download_url, stream=True, allow_redirects=True, headers=headers, timeout=60)
+if response.status_code == 401 and onedrive_oauth_mode:
+    print("تم رفض access token الحالي (401). جاري محاولة تحديث التوكن وإعادة المحاولة...")
+    try:
+        refreshed_access_token = refresh_onedrive_access_token_after_401()
+    except Exception as exc:
+        raise RuntimeError(
+            "فشل تحديث OneDrive OAuth token بعد انتهاء/إلغاء الصلاحية. "
+            "تحقق من ONEDRIVE_REFRESH_TOKEN و ONEDRIVE_CLIENT_ID."
+        ) from exc
+    headers["Authorization"] = "Bearer " + refreshed_access_token
+    response = requests.get(download_url, stream=True, allow_redirects=True, headers=headers, timeout=60)
 
 if response.status_code != 200:
     raise Exception(f"فشل التنزيل. كود الاستجابة HTTP Status: {response.status_code}")

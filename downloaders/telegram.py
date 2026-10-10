@@ -3,11 +3,10 @@
 # رفع أي فيديو من تلغرام إلى YouTube عبر Colab السحابي (بدون استهلاك الباقة)
 # ==============================================================================
 import os
-import glob
-import pickle
 import asyncio
 import subprocess
 import argparse
+import sys
 
 # 1. تثبيت وتحديث المكتبات المطلوبة داخل بيئة Colab
 subprocess.run([
@@ -20,10 +19,9 @@ nest_asyncio.apply()
 
 from telethon import TelegramClient
 from google.colab import drive
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from auth_utils import get_state_dir, get_youtube_credentials
 
 # ------------------------------------------------------------------------------
 # 1. الإعدادات والبيانات الخاصّة بك
@@ -79,54 +77,15 @@ API_HASH = args.telegram_api_hash
 # ------------------------------------------------------------------------------
 drive.mount('/content/mydrive', force_remount=False)
 
-STATE_DIR = "/content/mydrive/MyDrive/YT_Uploader"
-os.makedirs(STATE_DIR, exist_ok=True)
-TOKEN_FILE = os.path.join(STATE_DIR, "youtube_token.pickle")
-TG_SESSION_FILE = os.path.join(STATE_DIR, "telegram_session")
-
-CLIENT_SECRET_FILE = None
-possible_paths = [
-    "/content/client_secret.json",
-    os.path.join(STATE_DIR, "client_secret.json")
-]
-
-for p in possible_paths:
-    if os.path.exists(p):
-        CLIENT_SECRET_FILE = p
-        break
-
-if not CLIENT_SECRET_FILE:
-    matched = glob.glob("/content/client_secret*.json") + glob.glob(f"{STATE_DIR}/client_secret*.json")
-    if matched:
-        CLIENT_SECRET_FILE = matched[0]
-
-if CLIENT_SECRET_FILE is None:
-    raise FileNotFoundError("لم يتم العثور على client_secret.json! أضفه إلى Colab أو ضع الملف داخل مجلد YT_Uploader في Drive.")
+STATE_DIR = get_state_dir()
+TG_SESSION_FILE = os.getenv("TELEGRAM_SESSION_FILE", os.path.join(STATE_DIR, "telegram_session"))
 
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube"
 ]
 
-credentials = None
-if os.path.exists(TOKEN_FILE):
-    with open(TOKEN_FILE, "rb") as f:
-        credentials = pickle.load(f)
-
-if credentials and credentials.expired and credentials.refresh_token:
-    credentials.refresh(Request())
-
-if not credentials or not credentials.valid:
-    flow = InstalledAppFlow.from_client_secrets_file(
-        CLIENT_SECRET_FILE, SCOPES, redirect_uri="urn:ietf:wg:oauth:2.0:oob"
-    )
-    auth_url, _ = flow.authorization_url(prompt='consent')
-    print("اضغط على الرابط للمصادقة مع يوتيوب:\n", auth_url)
-    code = input("أدخل كود توثيق يوتيوب هنا: ").strip()
-    flow.fetch_token(code=code)
-    credentials = flow.credentials
-    with open(TOKEN_FILE, "wb") as f:
-        pickle.dump(credentials, f)
+credentials = get_youtube_credentials(SCOPES, provider_label="Telegram/YouTube")
 
 youtube = build("youtube", "v3", credentials=credentials)
 print("تم الاتصال بـ YouTube بنجاح.")
@@ -137,7 +96,26 @@ print("تم الاتصال بـ YouTube بنجاح.")
 async def download_telegram_video():
     print("\nجاري الاتصال بـ Telegram عبر Telethon...")
     client = TelegramClient(TG_SESSION_FILE, API_ID, API_HASH)
-    await client.start()
+    await client.connect()
+
+    is_authorized = await client.is_user_authorized()
+    if not is_authorized:
+        if not sys.stdin.isatty():
+            await client.disconnect()
+            raise RuntimeError(
+                "جلسة Telegram غير صالحة أو غير موجودة في الوضع غير التفاعلي. "
+                "نفّذ مصادقة Telegram مرة واحدة يدويًا لإنشاء TELEGRAM_SESSION_FILE دائم."
+            )
+
+        print(
+            "مطلوب إجراء يدوي لأول مرة فقط في Telegram: "
+            "أدخل رقم الهاتف وكود التحقق (ورمز 2FA إن وجد) لإنشاء جلسة دائمة."
+        )
+        await client.start()
+        if not await client.is_user_authorized():
+            await client.disconnect()
+            raise RuntimeError("فشل تسجيل دخول Telegram. تأكد من API ID/HASH ورمز التحقق.")
+        print(f"تم حفظ جلسة Telegram الدائمة في: {TG_SESSION_FILE}")
 
     url_parts = TELEGRAM_POST_URL.strip("/").split("/")
     chat_entity = url_parts[-2]
