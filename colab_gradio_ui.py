@@ -48,20 +48,33 @@ def _build_command_and_env(
     cmd = ["python", script_path]
 
     if source_name == "Telegram":
-        cmd.extend(["--telegram-post-url", source_url.strip()])
+        env["TELEGRAM_POST_URL"] = source_url.strip()
         if not telegram_api_id.strip() or not telegram_api_hash.strip():
             raise ValueError("يرجى إدخال Telegram API ID و Telegram API HASH عند اختيار Telegram.")
         env["TELEGRAM_API_ID"] = telegram_api_id.strip()
         env["TELEGRAM_API_HASH"] = telegram_api_hash.strip()
+        if video_title.strip():
+            env["TELEGRAM_VIDEO_TITLE"] = video_title.strip()
+        if video_description.strip():
+            env["TELEGRAM_VIDEO_DESCRIPTION"] = video_description.strip()
+        if privacy_status in PRIVACY_OPTIONS:
+            env["TELEGRAM_PRIVACY_STATUS"] = privacy_status
+    elif source_name == "Google Drive":
+        env["GDRIVE_VIDEO_URL"] = source_url.strip()
+        if video_title.strip():
+            env["GDRIVE_VIDEO_TITLE"] = video_title.strip()
+        if video_description.strip():
+            env["GDRIVE_VIDEO_DESCRIPTION"] = video_description.strip()
+        if privacy_status in PRIVACY_OPTIONS:
+            env["GDRIVE_PRIVACY_STATUS"] = privacy_status
     else:
-        cmd.extend(["--video-url", source_url.strip()])
-
-    if video_title.strip():
-        cmd.extend(["--video-title", video_title.strip()])
-    if video_description.strip():
-        cmd.extend(["--video-description", video_description.strip()])
-    if privacy_status in PRIVACY_OPTIONS:
-        cmd.extend(["--privacy-status", privacy_status])
+        env["ONEDRIVE_VIDEO_URL"] = source_url.strip()
+        if video_title.strip():
+            env["ONEDRIVE_VIDEO_TITLE"] = video_title.strip()
+        if video_description.strip():
+            env["ONEDRIVE_VIDEO_DESCRIPTION"] = video_description.strip()
+        if privacy_status in PRIVACY_OPTIONS:
+            env["ONEDRIVE_PRIVACY_STATUS"] = privacy_status
 
     return cmd, env
 
